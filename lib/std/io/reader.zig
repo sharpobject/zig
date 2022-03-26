@@ -190,7 +190,7 @@ pub fn Reader(
         /// Returns a slice of the stream data, with ptr equal to `buf.ptr`. The
         /// delimiter byte is written to the output buffer but is not included
         /// in the returned slice.
-        fn readUntilDelimiterOrEof(self: Self, buf: []u8, delimiter: u8) !?[]u8 {
+        pub fn readUntilDelimiterOrEof(self: Self, buf: []u8, delimiter: u8) !?[]u8 {
             var index: usize = 0;
             while (true) {
                 if (index >= buf.len) return error.StreamTooLong;
@@ -216,7 +216,7 @@ pub fn Reader(
         /// Reads from the stream until specified byte is found, discarding all data,
         /// including the delimiter.
         /// If end-of-stream is found, this function succeeds.
-        fn skipUntilDelimiterOrEof(self: Self, delimiter: u8) !void {
+        pub fn skipUntilDelimiterOrEof(self: Self, delimiter: u8) !void {
             while (true) {
                 const byte = self.readByte() catch |err| switch (err) {
                     error.EndOfStream => return,
