@@ -99,8 +99,9 @@ const math = std.math;
 const assert = std.debug.assert;
 const mem = std.mem;
 const Allocator = std.mem.Allocator;
-const page_size = std.mem.page_size;
+const root = @import("root");
 const StackTrace = std.builtin.StackTrace;
+const page_size = if (@hasDecl(root, "ENABLE_HUGE_PAGES")) 2*1024*1024 else std.mem.page_size;
 
 /// Integer type for pointing to slots in a small allocation
 const SlotIndex = std.meta.Int(.unsigned, math.log2(page_size) + 1);

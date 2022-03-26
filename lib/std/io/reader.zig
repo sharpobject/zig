@@ -99,7 +99,7 @@ pub fn Reader(
         /// Does not include the delimiter in the result.
         /// If the `std.ArrayList` length would exceed `max_size`, `error.StreamTooLong` is returned and the
         /// `std.ArrayList` is populated with `max_size` bytes from the stream.
-        pub fn readUntilDelimiterArrayList(
+        fn readUntilDelimiterArrayList(
             self: Self,
             array_list: *std.ArrayList(u8),
             delimiter: u8,
@@ -164,7 +164,7 @@ pub fn Reader(
         /// null.
         /// Caller owns returned memory.
         /// If this function returns an error, the contents from the stream read so far are lost.
-        pub fn readUntilDelimiterOrEofAlloc(
+        fn readUntilDelimiterOrEofAlloc(
             self: Self,
             allocator: mem.Allocator,
             delimiter: u8,
@@ -190,7 +190,7 @@ pub fn Reader(
         /// Returns a slice of the stream data, with ptr equal to `buf.ptr`. The
         /// delimiter byte is written to the output buffer but is not included
         /// in the returned slice.
-        pub fn readUntilDelimiterOrEof(self: Self, buf: []u8, delimiter: u8) !?[]u8 {
+        fn readUntilDelimiterOrEof(self: Self, buf: []u8, delimiter: u8) !?[]u8 {
             var index: usize = 0;
             while (true) {
                 if (index >= buf.len) return error.StreamTooLong;
@@ -216,7 +216,7 @@ pub fn Reader(
         /// Reads from the stream until specified byte is found, discarding all data,
         /// including the delimiter.
         /// If end-of-stream is found, this function succeeds.
-        pub fn skipUntilDelimiterOrEof(self: Self, delimiter: u8) !void {
+        fn skipUntilDelimiterOrEof(self: Self, delimiter: u8) !void {
             while (true) {
                 const byte = self.readByte() catch |err| switch (err) {
                     error.EndOfStream => return,
