@@ -260,10 +260,16 @@ const PageAllocator = struct {
     fn alloc(_: *anyopaque, n: usize, alignment: u29, len_align: u29, ra: usize) error{OutOfMemory}![]u8 {
         _ = ra;
         assert(n > 0);
-        if (n > maxInt(usize) - (mem.page_size - 1)) {
+        const page_size: u29 = blk: {
+            if (@hasDecl(root, "ENABLE_HUGE_PAGES") and n % (2 * 1024 * 1024) == 0) {
+                break :blk 2 * 1024 * 1024;
+            }
+            break :blk mem.page_size;
+        };
+        if (n > maxInt(usize) - (page_size - 1)) {
             return error.OutOfMemory;
         }
-        const aligned_len = mem.alignForward(n, mem.page_size);
+        const aligned_len = mem.alignForward(n, page_size);
 
         if (builtin.os.tag == .windows) {
             const w = os.windows;
@@ -318,21 +324,24 @@ const PageAllocator = struct {
             }
         }
 
-        const max_drop_len = alignment - @min(alignment, mem.page_size);
+        const max_drop_len = alignment - @min(alignment, page_size);
         const alloc_len = if (max_drop_len <= aligned_len - n)
             aligned_len
         else
-            mem.alignForward(aligned_len + max_drop_len, mem.page_size);
+            mem.alignForward(aligned_len + max_drop_len, page_size);
         const hint = @atomicLoad(@TypeOf(next_mmap_addr_hint), &next_mmap_addr_hint, .Unordered);
         const slice = os.mmap(
             hint,
             alloc_len,
             os.PROT.READ | os.PROT.WRITE,
-            os.MAP.PRIVATE | os.MAP.ANONYMOUS,
+            if (page_size == 2 * 1024 * 1024)
+                os.MAP.PRIVATE | os.MAP.ANONYMOUS | os.MAP.NORESERVE | os.MAP.HUGETLB | os.linux.MFD.HUGE_2MB
+            else
+                os.MAP.PRIVATE | os.MAP.ANONYMOUS,
             -1,
             0,
         ) catch return error.OutOfMemory;
-        assert(mem.isAligned(@ptrToInt(slice.ptr), mem.page_size));
+        assert(mem.isAligned(@ptrToInt(slice.ptr), page_size));
 
         const result_ptr = mem.alignPointer(slice.ptr, alignment) orelse
             return error.OutOfMemory;
@@ -351,7 +360,10 @@ const PageAllocator = struct {
             os.munmap(@alignCast(mem.page_size, result_ptr[aligned_len..aligned_buffer_len]));
         }
 
-        const new_hint = @alignCast(mem.page_size, result_ptr + aligned_len);
+        const new_hint = if (page_size == 2 * 1024 * 1024)
+            @alignCast(2 * 1024 * 1024, result_ptr + aligned_len)
+        else
+            @alignCast(mem.page_size, result_ptr + aligned_len);
         _ = @cmpxchgStrong(@TypeOf(next_mmap_addr_hint), &next_mmap_addr_hint, hint, new_hint, .Monotonic, .Monotonic);
 
         return result_ptr[0..alignPageAllocLen(aligned_len, n, len_align)];
@@ -365,8 +377,15 @@ const PageAllocator = struct {
         len_align: u29,
         return_address: usize,
     ) ?usize {
+        if (@hasDecl(root, "ENABLE_HUGE_PAGES")) {
+            if (new_size > buf_unaligned.len) {
+                return null;
+            }
+            return buf_unaligned.len;
+        }
         _ = buf_align;
         _ = return_address;
+
         const new_size_aligned = mem.alignForward(new_size, mem.page_size);
 
         if (builtin.os.tag == .windows) {
