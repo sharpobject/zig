@@ -68,7 +68,7 @@ pub const Address = extern union {
         return error.InvalidIPAddressFormat;
     }
 
-    pub fn parseExpectingFamily(name: []const u8, family: os.sa_family_t, port: u16) !Address {
+    pub fn parseExpectingFamily(name: []const u8, family: os.linux.sa_family_t, port: u16) !Address {
         switch (family) {
             os.AF.INET => return parseIp4(name, port),
             os.AF.INET6 => return parseIp6(name, port),
@@ -734,7 +734,7 @@ pub fn getAddressList(allocator: mem.Allocator, name: []const u8, port: u16) !*A
     const arena = result.arena.allocator();
     errdefer result.deinit();
 
-    if (builtin.target.os.tag == .windows or builtin.link_libc) {
+    if (builtin.target.os.tag == .windows) {
         const name_c = try std.cstr.addNullByte(allocator, name);
         defer allocator.free(name_c);
 
@@ -855,7 +855,7 @@ fn linuxLookupName(
     addrs: *std.ArrayList(LookupAddr),
     canon: *std.ArrayList(u8),
     opt_name: ?[]const u8,
-    family: os.sa_family_t,
+    family: os.linux.sa_family_t,
     flags: u32,
     port: u16,
 ) !void {
@@ -1097,7 +1097,7 @@ fn addrCmpLessThan(context: void, b: LookupAddr, a: LookupAddr) bool {
 
 fn linuxLookupNameFromNull(
     addrs: *std.ArrayList(LookupAddr),
-    family: os.sa_family_t,
+    family: os.linux.sa_family_t,
     flags: u32,
     port: u16,
 ) !void {
@@ -1130,7 +1130,7 @@ fn linuxLookupNameFromHosts(
     addrs: *std.ArrayList(LookupAddr),
     canon: *std.ArrayList(u8),
     name: []const u8,
-    family: os.sa_family_t,
+    family: os.linux.sa_family_t,
     port: u16,
 ) !void {
     const file = fs.openFileAbsoluteZ("/etc/hosts", .{}) catch |err| switch (err) {
@@ -1204,7 +1204,7 @@ fn linuxLookupNameFromDnsSearch(
     addrs: *std.ArrayList(LookupAddr),
     canon: *std.ArrayList(u8),
     name: []const u8,
-    family: os.sa_family_t,
+    family: os.linux.sa_family_t,
     port: u16,
 ) !void {
     var rc: ResolvConf = undefined;
@@ -1259,7 +1259,7 @@ fn linuxLookupNameFromDns(
     addrs: *std.ArrayList(LookupAddr),
     canon: *std.ArrayList(u8),
     name: []const u8,
-    family: os.sa_family_t,
+    family: os.linux.sa_family_t,
     rc: ResolvConf,
     port: u16,
 ) !void {
@@ -1269,12 +1269,12 @@ fn linuxLookupNameFromDns(
         .port = port,
     };
     const AfRr = struct {
-        af: os.sa_family_t,
+        af: os.linux.sa_family_t,
         rr: u8,
     };
     const afrrs = [_]AfRr{
-        AfRr{ .af = os.AF.INET6, .rr = os.RR.A },
-        AfRr{ .af = os.AF.INET, .rr = os.RR.AAAA },
+        AfRr{ .af = os.AF.INET6, .rr = os.linux.RR.A },
+        AfRr{ .af = os.AF.INET, .rr = os.linux.RR.AAAA },
     };
     var qbuf: [2][280]u8 = undefined;
     var abuf: [2][512]u8 = undefined;
@@ -1413,7 +1413,7 @@ fn resMSendRc(
     const attempts = rc.attempts;
 
     var sl: os.socklen_t = @sizeOf(os.sockaddr.in);
-    var family: os.sa_family_t = os.AF.INET;
+    var family: os.linux.sa_family_t = os.AF.INET;
 
     var ns_list = std.ArrayList(Address).init(rc.ns.allocator);
     defer ns_list.deinit();
@@ -1596,21 +1596,21 @@ fn dnsParse(
 
 fn dnsParseCallback(ctx: dpc_ctx, rr: u8, data: []const u8, packet: []const u8) !void {
     switch (rr) {
-        os.RR.A => {
+        os.linux.RR.A => {
             if (data.len != 4) return error.InvalidDnsARecord;
             const new_addr = try ctx.addrs.addOne();
             new_addr.* = LookupAddr{
                 .addr = Address.initIp4(data[0..4].*, ctx.port),
             };
         },
-        os.RR.AAAA => {
+        os.linux.RR.AAAA => {
             if (data.len != 16) return error.InvalidDnsAAAARecord;
             const new_addr = try ctx.addrs.addOne();
             new_addr.* = LookupAddr{
                 .addr = Address.initIp6(data[0..16].*, ctx.port, 0, 0),
             };
         },
-        os.RR.CNAME => {
+        os.linux.RR.CNAME => {
             var tmp: [256]u8 = undefined;
             // Returns len of compressed name. strlen to get canon name.
             _ = try os.dn_expand(packet, data, &tmp);

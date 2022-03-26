@@ -1,5 +1,6 @@
 const std = @import("../std.zig");
 const builtin = @import("builtin");
+const root = @import("root");
 const Allocator = std.mem.Allocator;
 const mem = std.mem;
 const os = std.os;
@@ -16,8 +17,14 @@ fn alloc(_: *anyopaque, n: usize, log2_align: u8, ra: usize) ?[*]u8 {
     _ = ra;
     _ = log2_align;
     assert(n > 0);
-    if (n > maxInt(usize) - (mem.page_size - 1)) return null;
-    const aligned_len = mem.alignForward(n, mem.page_size);
+    const page_size: u29 = blk: {
+        if (@hasDecl(root, "ENABLE_HUGE_PAGES") and n % (2 * 1024 * 1024) == 0) {
+            break :blk 2 * 1024 * 1024;
+        }
+        break :blk mem.page_size;
+    };
+    if (n > maxInt(usize) - @intCast(usize, (page_size - 1))) return null;
+    const aligned_len = mem.alignForward(n, page_size);
 
     if (builtin.os.tag == .windows) {
         const w = os.windows;
@@ -35,12 +42,18 @@ fn alloc(_: *anyopaque, n: usize, log2_align: u8, ra: usize) ?[*]u8 {
         hint,
         aligned_len,
         os.PROT.READ | os.PROT.WRITE,
-        os.MAP.PRIVATE | os.MAP.ANONYMOUS,
+        if (page_size == 2 * 1024 * 1024)
+            os.MAP.PRIVATE | os.MAP.ANONYMOUS | os.MAP.NORESERVE | os.MAP.HUGETLB | os.linux.MFD.HUGE_2MB
+        else
+            os.MAP.PRIVATE | os.MAP.ANONYMOUS,
         -1,
         0,
     ) catch return null;
-    assert(mem.isAligned(@ptrToInt(slice.ptr), mem.page_size));
-    const new_hint = @alignCast(mem.page_size, slice.ptr + aligned_len);
+    assert(mem.isAligned(@ptrToInt(slice.ptr), page_size));
+    const new_hint = if (page_size == 2 * 1024 * 1024)
+        @alignCast(2 * 1024 * 1024, slice.ptr + aligned_len)
+    else
+        @alignCast(mem.page_size, slice.ptr + aligned_len);
     _ = @cmpxchgStrong(@TypeOf(std.heap.next_mmap_addr_hint), &std.heap.next_mmap_addr_hint, hint, new_hint, .Monotonic, .Monotonic);
     return slice.ptr;
 }
@@ -52,6 +65,12 @@ fn resize(
     new_size: usize,
     return_address: usize,
 ) bool {
+    if (@hasDecl(root, "ENABLE_HUGE_PAGES")) {
+        if (new_size > buf_unaligned.len) {
+            return false;
+        }
+        return true;
+    }
     _ = log2_buf_align;
     _ = return_address;
     const new_size_aligned = mem.alignForward(new_size, mem.page_size);

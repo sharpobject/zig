@@ -1,6 +1,7 @@
 //! The standard memory allocation interface.
 
 const std = @import("../std.zig");
+const root = @import("root");
 const assert = std.debug.assert;
 const math = std.math;
 const mem = std.mem;
@@ -208,7 +209,8 @@ pub fn allocAdvancedWithRetAddr(
     // The Zig Allocator interface is not intended to solve allocations beyond
     // the minimum OS page size. For these use cases, the caller must use OS
     // APIs directly.
-    comptime assert(a <= mem.page_size);
+    const page_size: u29 = if (@hasDecl(root, "ENABLE_HUGE_PAGES")) 2 * 1024 * 1024 else mem.page_size;
+    comptime assert(a <= page_size);
 
     if (n == 0) {
         const ptr = comptime std.mem.alignBackward(math.maxInt(usize), a);

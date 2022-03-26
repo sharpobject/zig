@@ -156,7 +156,7 @@ pub const IO_Uring = struct {
     pub fn submit_and_wait(self: *IO_Uring, wait_nr: u32) !u32 {
         const submitted = self.flush_sq();
         var flags: u32 = 0;
-        if (self.sq_ring_needs_enter(&flags) or wait_nr > 0) {
+        if (wait_nr > 0 or (submitted > 0 and self.sq_ring_needs_enter(&flags))) {
             if (wait_nr > 0 or (self.flags & linux.IORING_SETUP_IOPOLL) != 0) {
                 flags |= linux.IORING_ENTER_GETEVENTS;
             }

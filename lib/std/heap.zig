@@ -225,9 +225,15 @@ else
     };
 
 /// Verifies that the adjusted length will still map to the full length
-pub fn alignPageAllocLen(full_len: usize, len: usize) usize {
-    const aligned_len = mem.alignAllocLen(full_len, len);
-    assert(mem.alignForward(aligned_len, mem.page_size) == full_len);
+pub fn alignPageAllocLen(full_len: usize, len: usize, len_align: u29) usize {
+    const aligned_len = mem.alignAllocLen(full_len, len, len_align);
+    const page_size: u29 = blk: {
+        if (@hasDecl(root, "ENABLE_HUGE_PAGES")) {
+            break :blk 2 * 1024 * 1024;
+        }
+        break :blk mem.page_size;
+    };
+    assert(mem.alignForward(aligned_len, page_size) == full_len);
     return aligned_len;
 }
 
