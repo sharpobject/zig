@@ -1295,7 +1295,7 @@ pub const Value = union(enum) {
 
     pub fn jsonStringify(
         value: @This(),
-        options: StringifyOptions,
+        comptime options: StringifyOptions,
         out_stream: anytype,
     ) @TypeOf(out_stream).Error!void {
         switch (value) {
@@ -1309,7 +1309,7 @@ pub const Value = union(enum) {
             .Object => |inner| {
                 try out_stream.writeByte('{');
                 var field_output = false;
-                var child_options = options;
+                comptime var child_options = options;
                 if (child_options.whitespace) |*child_whitespace| {
                     child_whitespace.indent_level += 1;
                 }
@@ -2969,7 +2969,7 @@ fn outputUnicodeEscape(
     }
 }
 
-fn outputJsonString(value: []const u8, options: StringifyOptions, out_stream: anytype) !void {
+fn outputJsonString(value: []const u8, comptime options: StringifyOptions, out_stream: anytype) !void {
     if (options.string.String.assume_ascii) {
         try out_stream.writeByte('\"');
         var i: usize = 0;
@@ -3023,9 +3023,9 @@ fn outputJsonString(value: []const u8, options: StringifyOptions, out_stream: an
     try out_stream.writeByte('\"');
 }
 
-pub fn stringify(
+pub inline fn stringify(
     value: anytype,
-    options: StringifyOptions,
+    comptime options: StringifyOptions,
     out_stream: anytype,
 ) @TypeOf(out_stream).Error!void {
     const T = @TypeOf(value);
@@ -3079,7 +3079,7 @@ pub fn stringify(
 
             try out_stream.writeByte('{');
             var field_output = false;
-            var child_options = options;
+            comptime var child_options = options;
             if (child_options.whitespace) |*child_whitespace| {
                 child_whitespace.indent_level += 1;
             }
@@ -3148,7 +3148,7 @@ pub fn stringify(
                 }
 
                 try out_stream.writeByte('[');
-                var child_options = options;
+                comptime var child_options = options;
                 if (child_options.whitespace) |*whitespace| {
                     whitespace.indent_level += 1;
                 }
