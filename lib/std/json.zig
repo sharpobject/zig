@@ -2931,6 +2931,12 @@ pub const StringifyOptions = struct {
 
         /// String output options
         const StringOutputOptions = struct {
+            /// Should the encoder assume that the string is ascii?
+            assume_ascii: bool = false,
+
+            /// Should the encoder assume that the string is valide UTF-8?
+            assume_valid_utf8: bool = false,
+
             /// Should '/' be escaped in strings?
             escape_solidus: bool = false,
 
@@ -2964,6 +2970,19 @@ fn outputUnicodeEscape(
 }
 
 fn outputJsonString(value: []const u8, options: StringifyOptions, out_stream: anytype) !void {
+    if (options.string.String.assume_ascii) {
+        try out_stream.writeByte('\"');
+        var i: usize = 0;
+        while (i < value.len) : (i += 1) {
+            if (value[i] == '\\' or value[i] == '\"') {
+                try out_stream.writeByte('\\');
+            }
+            try out_stream.writeByte(value[i]);
+        }
+        try out_stream.writeByte('\"');
+        return;
+    }
+
     try out_stream.writeByte('\"');
     var i: usize = 0;
     while (i < value.len) : (i += 1) {
@@ -3122,7 +3141,8 @@ pub fn stringify(
             },
             // TODO: .Many when there is a sentinel (waiting for https://github.com/ziglang/zig/pull/3972)
             .Slice => {
-                if (ptr_info.child == u8 and options.string == .String and std.unicode.utf8ValidateSlice(value)) {
+                if (ptr_info.child == u8 and options.string == .String and
+                    (options.string.String.assume_ascii or options.string.String.assume_valid_utf8 or std.unicode.utf8ValidateSlice(value))) {
                     try outputJsonString(value, options, out_stream);
                     return;
                 }
