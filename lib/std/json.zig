@@ -2969,8 +2969,38 @@ fn outputUnicodeEscape(
     }
 }
 
+fn getStringEncodedLenComptimeAssumeAscii(comptime value: []const u8) ?usize {
+    var ret: usize = 2;
+    var i: usize = 0;
+    while (i < value.len) : (i += 1) {
+        if (value[i] > 127) {
+            return null;
+        }
+        if (value[i] == '\\' or value[i] == '\"') {
+            ret += 1;
+        }
+        ret += 1;
+    }
+    return ret;
+}
+
+fn stringEncodeComptimeAssumeAscii(comptime value: []const u8, comptime len: usize) [len]u8 {
+    var ret: [len]u8 = [_]u8{'\"'} ** len;
+    var i: usize = 0;
+    var j: usize = 1;
+    while (i < value.len) : (i += 1) {
+        if (value[i] == '\\' or value[i] == '\"') {
+            ret[j] = '\\';
+            j += 1;
+        }
+        ret[j] = value[i];
+        j += 1;
+    }
+    return ret;
+}
+
 fn outputJsonString(value: []const u8, comptime options: StringifyOptions, out_stream: anytype) !void {
-    if (options.string.String.assume_ascii) {
+    if (comptime (options.string == .String and options.string.String.assume_ascii)) {
         try out_stream.writeByte('\"');
         var i: usize = 0;
         while (i < value.len) : (i += 1) {
@@ -3108,7 +3138,13 @@ pub inline fn stringify(
                         try out_stream.writeByte('\n');
                         try child_whitespace.outputIndent(out_stream);
                     }
-                    try outputJsonString(Field.name, options, out_stream);
+                    @setEvalBranchQuota(1_000_000);
+                    if (comptime getStringEncodedLenComptimeAssumeAscii(Field.name)) |len| {
+                        const buf = comptime stringEncodeComptimeAssumeAscii(Field.name, len);
+                        try out_stream.writeAll(&buf);
+                    } else {
+                        try outputJsonString(Field.name, options, out_stream);
+                    }
                     try out_stream.writeByte(':');
                     if (child_options.whitespace) |child_whitespace| {
                         if (child_whitespace.separator) {
