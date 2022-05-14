@@ -2969,9 +2969,12 @@ fn outputUnicodeEscape(
     }
 }
 
-fn getStringEncodedLenComptimeAssumeAscii(comptime value: []const u8) ?usize {
-    var ret: usize = 2;
+fn getStringEncodedLenComptimeAssumeAscii(comptime value: []const u8, comptime prepend_comma: bool) ?usize {
+    var ret: usize = 3;
     var i: usize = 0;
+    if (prepend_comma) {
+        ret += 1;
+    }
     while (i < value.len) : (i += 1) {
         if (value[i] > 127) {
             return null;
@@ -2984,10 +2987,14 @@ fn getStringEncodedLenComptimeAssumeAscii(comptime value: []const u8) ?usize {
     return ret;
 }
 
-fn stringEncodeComptimeAssumeAscii(comptime value: []const u8, comptime len: usize) [len]u8 {
+fn stringEncodeComptimeAssumeAscii(comptime value: []const u8, comptime len: usize, comptime prepend_comma: bool) [len]u8 {
     var ret: [len]u8 = [_]u8{'\"'} ** len;
     var i: usize = 0;
     var j: usize = 1;
+    if (prepend_comma) {
+        ret[0] = ',';
+        j += 1;
+    }
     while (i < value.len) : (i += 1) {
         if (value[i] == '\\' or value[i] == '\"') {
             ret[j] = '\\';
@@ -2996,6 +3003,7 @@ fn stringEncodeComptimeAssumeAscii(comptime value: []const u8, comptime len: usi
         ret[j] = value[i];
         j += 1;
     }
+    ret[len-1] = ':';
     return ret;
 }
 
@@ -3053,7 +3061,7 @@ fn outputJsonString(value: []const u8, comptime options: StringifyOptions, out_s
     try out_stream.writeByte('\"');
 }
 
-pub inline fn stringify(
+pub fn stringify(
     value: anytype,
     comptime options: StringifyOptions,
     out_stream: anytype,
@@ -3113,39 +3121,48 @@ pub inline fn stringify(
             if (child_options.whitespace) |*child_whitespace| {
                 child_whitespace.indent_level += 1;
             }
-            inline for (S.fields) |Field| {
+            @setEvalBranchQuota(1_000_000);
+            comptime var known_field_idx = 1_000_000;
+            comptime {
+                for (S.fields) |Field,idx| {
+                    if (Field.field_type == void) continue;
+                    if (@typeInfo(Field.field_type) != .Optional or options.emit_null_optional_fields) {
+                        known_field_idx = idx;
+                    }
+                }
+            }
+
+            inline for (S.fields) |Field,idx| {
                 // don't include void fields
                 if (Field.field_type == void) continue;
 
-                var emit_field = true;
-
                 // don't include optional fields that are null when emit_null_optional_fields is set to false
-                if (@typeInfo(Field.field_type) == .Optional) {
-                    if (options.emit_null_optional_fields == false) {
-                        if (@field(value, Field.name) == null) {
-                            emit_field = false;
+                const first_part = comptime (@typeInfo(Field.field_type) != .Optional or options.emit_null_optional_fields);
+                const second_part = @typeInfo(Field.field_type) == .Optional and @field(value, Field.name) != null;
+                // due to zig issue #5149 this can't be const...
+                var cond = first_part or second_part;
+                if (cond) {
+                    if (idx < known_field_idx) {
+                        if (!field_output) {
+                            field_output = true;
+                        } else {
+                            try out_stream.writeByte(',');
                         }
                     }
-                }
-
-                if (emit_field) {
-                    if (!field_output) {
-                        field_output = true;
-                    } else {
-                        try out_stream.writeByte(',');
-                    }
-                    if (child_options.whitespace) |child_whitespace| {
-                        try out_stream.writeByte('\n');
-                        try child_whitespace.outputIndent(out_stream);
-                    }
-                    @setEvalBranchQuota(1_000_000);
-                    if (comptime getStringEncodedLenComptimeAssumeAscii(Field.name)) |len| {
-                        const buf = comptime stringEncodeComptimeAssumeAscii(Field.name, len);
+                    if (comptime getStringEncodedLenComptimeAssumeAscii(Field.name, idx >= known_field_idx)) |len| {
+                        const buf = comptime stringEncodeComptimeAssumeAscii(Field.name, len, idx >= known_field_idx);
                         try out_stream.writeAll(&buf);
                     } else {
+                        if (idx >= known_field_idx) {
+                            try out_stream.writeByte(',');
+                        }
+                        if (child_options.whitespace) |child_whitespace| {
+                            try out_stream.writeByte('\n');
+                            try child_whitespace.outputIndent(out_stream);
+                        }
                         try outputJsonString(Field.name, options, out_stream);
+                        try out_stream.writeByte(':');
                     }
-                    try out_stream.writeByte(':');
                     if (child_options.whitespace) |child_whitespace| {
                         if (child_whitespace.separator) {
                             try out_stream.writeByte(' ');
@@ -3154,7 +3171,7 @@ pub inline fn stringify(
                     try stringify(@field(value, Field.name), child_options, out_stream);
                 }
             }
-            if (field_output) {
+            if (known_field_idx < 1_000_000 or field_output) {
                 if (options.whitespace) |whitespace| {
                     try out_stream.writeByte('\n');
                     try whitespace.outputIndent(out_stream);
