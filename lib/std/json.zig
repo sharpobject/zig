@@ -3142,18 +3142,18 @@ pub fn stringify(
                 // due to zig issue #5149 this can't be const...
                 var cond = first_part or second_part;
                 if (cond) {
-                    if (idx < known_field_idx) {
+                    if (idx <= known_field_idx) {
                         if (!field_output) {
                             field_output = true;
                         } else {
                             try out_stream.writeByte(',');
                         }
                     }
-                    if (comptime getStringEncodedLenComptimeAssumeAscii(Field.name, idx >= known_field_idx)) |len| {
-                        const buf = comptime stringEncodeComptimeAssumeAscii(Field.name, len, idx >= known_field_idx);
+                    if (comptime getStringEncodedLenComptimeAssumeAscii(Field.name, idx > known_field_idx)) |len| {
+                        const buf = comptime stringEncodeComptimeAssumeAscii(Field.name, len, idx > known_field_idx);
                         try out_stream.writeAll(&buf);
                     } else {
-                        if (idx >= known_field_idx) {
+                        if (idx > known_field_idx) {
                             try out_stream.writeByte(',');
                         }
                         if (child_options.whitespace) |child_whitespace| {
