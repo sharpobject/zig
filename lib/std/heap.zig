@@ -243,7 +243,13 @@ else
 /// Verifies that the adjusted length will still map to the full length
 pub fn alignPageAllocLen(full_len: usize, len: usize, len_align: u29) usize {
     const aligned_len = mem.alignAllocLen(full_len, len, len_align);
-    assert(mem.alignForward(aligned_len, mem.page_size) == full_len);
+    const page_size: u29 = blk: {
+        if (@hasDecl(root, "ENABLE_HUGE_PAGES")) {
+            break :blk 2 * 1024 * 1024;
+        }
+        break :blk mem.page_size;
+    };
+    assert(mem.alignForward(aligned_len, page_size) == full_len);
     return aligned_len;
 }
 
@@ -261,12 +267,12 @@ const PageAllocator = struct {
         _ = ra;
         assert(n > 0);
         const page_size: u29 = blk: {
-            if (@hasDecl(root, "ENABLE_HUGE_PAGES") and n % (2 * 1024 * 1024) == 0) {
+            if (@hasDecl(root, "ENABLE_HUGE_PAGES")) {
                 break :blk 2 * 1024 * 1024;
             }
             break :blk mem.page_size;
         };
-        if (n > maxInt(usize) - (page_size - 1)) {
+        if (n > maxInt(usize) - @intCast(usize, (page_size - 1))) {
             return error.OutOfMemory;
         }
         const aligned_len = mem.alignForward(n, page_size);
