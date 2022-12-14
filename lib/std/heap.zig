@@ -243,7 +243,8 @@ else
 /// Verifies that the adjusted length will still map to the full length
 pub fn alignPageAllocLen(full_len: usize, len: usize, len_align: u29) usize {
     const aligned_len = mem.alignAllocLen(full_len, len, len_align);
-    assert(mem.alignForward(aligned_len, mem.page_size) == full_len);
+    const page_size: u29 = comptime if (@hasDecl(root, "ENABLE_HUGE_PAGES")) 2 * 1024 * 1024 else mem.page_size;
+    assert(mem.alignForward(aligned_len, page_size) == full_len);
     return aligned_len;
 }
 
@@ -260,10 +261,11 @@ const PageAllocator = struct {
     fn alloc(_: *anyopaque, n: usize, alignment: u29, len_align: u29, ra: usize) error{OutOfMemory}![]u8 {
         _ = ra;
         assert(n > 0);
-        if (n > maxInt(usize) - (mem.page_size - 1)) {
+        const page_size: u29 = comptime if (@hasDecl(root, "ENABLE_HUGE_PAGES")) 2 * 1024 * 1024 else mem.page_size;
+        if (n > maxInt(usize) - @intCast(usize, (page_size - 1))) {
             return error.OutOfMemory;
         }
-        const aligned_len = mem.alignForward(n, mem.page_size);
+        const aligned_len = mem.alignForward(n, page_size);
 
         if (builtin.os.tag == .windows) {
             const w = os.windows;
@@ -318,21 +320,24 @@ const PageAllocator = struct {
             }
         }
 
-        const max_drop_len = alignment - @min(alignment, mem.page_size);
+        const max_drop_len = alignment - @min(alignment, page_size);
         const alloc_len = if (max_drop_len <= aligned_len - n)
             aligned_len
         else
-            mem.alignForward(aligned_len + max_drop_len, mem.page_size);
+            mem.alignForward(aligned_len + max_drop_len, page_size);
         const hint = @atomicLoad(@TypeOf(next_mmap_addr_hint), &next_mmap_addr_hint, .Unordered);
         const slice = os.mmap(
             hint,
             alloc_len,
             os.PROT.READ | os.PROT.WRITE,
-            os.MAP.PRIVATE | os.MAP.ANONYMOUS,
+            if (page_size == 2 * 1024 * 1024)
+                os.MAP.PRIVATE | os.MAP.ANONYMOUS | os.MAP.NORESERVE | os.MAP.HUGETLB | os.linux.MFD.HUGE_2MB
+            else
+                os.MAP.PRIVATE | os.MAP.ANONYMOUS,
             -1,
             0,
         ) catch return error.OutOfMemory;
-        assert(mem.isAligned(@ptrToInt(slice.ptr), mem.page_size));
+        assert(mem.isAligned(@ptrToInt(slice.ptr), page_size));
 
         const result_ptr = mem.alignPointer(slice.ptr, alignment) orelse
             return error.OutOfMemory;
@@ -348,10 +353,10 @@ const PageAllocator = struct {
         // Unmap extra pages
         const aligned_buffer_len = alloc_len - drop_len;
         if (aligned_buffer_len > aligned_len) {
-            os.munmap(@alignCast(mem.page_size, result_ptr[aligned_len..aligned_buffer_len]));
+            os.munmap(@alignCast(page_size, result_ptr[aligned_len..aligned_buffer_len]));
         }
 
-        const new_hint = @alignCast(mem.page_size, result_ptr + aligned_len);
+        const new_hint = @alignCast(page_size, result_ptr + aligned_len);
         _ = @cmpxchgStrong(@TypeOf(next_mmap_addr_hint), &next_mmap_addr_hint, hint, new_hint, .Monotonic, .Monotonic);
 
         return result_ptr[0..alignPageAllocLen(aligned_len, n, len_align)];
@@ -365,6 +370,12 @@ const PageAllocator = struct {
         len_align: u29,
         return_address: usize,
     ) ?usize {
+        if (@hasDecl(root, "ENABLE_HUGE_PAGES")) {
+            if (new_size > buf_unaligned.len) {
+                return null;
+            }
+            return buf_unaligned.len;
+        }
         _ = buf_align;
         _ = return_address;
         const new_size_aligned = mem.alignForward(new_size, mem.page_size);

@@ -99,7 +99,7 @@ pub fn Reader(
         /// Does not include the delimiter in the result.
         /// If the `std.ArrayList` length would exceed `max_size`, `error.StreamTooLong` is returned and the
         /// `std.ArrayList` is populated with `max_size` bytes from the stream.
-        pub fn readUntilDelimiterArrayList(
+        fn readUntilDelimiterArrayList(
             self: Self,
             array_list: *std.ArrayList(u8),
             delimiter: u8,
@@ -164,7 +164,7 @@ pub fn Reader(
         /// null.
         /// Caller owns returned memory.
         /// If this function returns an error, the contents from the stream read so far are lost.
-        pub fn readUntilDelimiterOrEofAlloc(
+        fn readUntilDelimiterOrEofAlloc(
             self: Self,
             allocator: mem.Allocator,
             delimiter: u8,
