@@ -18,7 +18,7 @@ fn alloc(_: *anyopaque, n: usize, log2_align: u8, ra: usize) ?[*]u8 {
     _ = log2_align;
     assert(n > 0);
     const page_size: u29 = blk: {
-        if (@hasDecl(root, "ENABLE_HUGE_PAGES") and n % (2 * 1024 * 1024) == 0) {
+        if (@hasDecl(root, "ENABLE_HUGE_PAGES")) {
             break :blk 2 * 1024 * 1024;
         }
         break :blk mem.page_size;
