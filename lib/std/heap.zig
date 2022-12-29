@@ -374,7 +374,7 @@ const PageAllocator = struct {
             if (new_size > buf_unaligned.len) {
                 return null;
             }
-            return buf_unaligned.len;
+            return new_size;
         }
         _ = buf_align;
         _ = return_address;
