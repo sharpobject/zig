@@ -326,17 +326,42 @@ const PageAllocator = struct {
         else
             mem.alignForward(aligned_len + max_drop_len, page_size);
         const hint = @atomicLoad(@TypeOf(next_mmap_addr_hint), &next_mmap_addr_hint, .Unordered);
-        const slice = os.mmap(
-            hint,
-            alloc_len,
-            os.PROT.READ | os.PROT.WRITE,
-            if (page_size == 2 * 1024 * 1024)
-                os.MAP.PRIVATE | os.MAP.ANONYMOUS | os.MAP.NORESERVE | os.MAP.HUGETLB | os.linux.MFD.HUGE_2MB
-            else
+        var slice: []align(4096) u8 = undefined;
+        if (page_size == 2 * 1024 * 1024 and @hasDecl(root, "DISABLE_OVERCOMMIT")) {
+            slice = os.mmap(
+                hint,
+                alloc_len,
+                os.PROT.READ | os.PROT.WRITE,
+                os.MAP.PRIVATE | os.MAP.ANONYMOUS | os.MAP.HUGETLB | os.linux.MFD.HUGE_2MB,
+                -1,
+                0) catch &[0]u8{};
+            if (slice.len == 0) {
+                // Try again without huge pages.
+                slice = os.mmap(
+                    hint,
+                    alloc_len,
+                    os.PROT.READ | os.PROT.WRITE,
+                    os.MAP.PRIVATE | os.MAP.ANONYMOUS,
+                    -1,
+                    0) catch return error.OutOfMemory;
+            }
+        } else if (page_size == 2 * 1024 * 1024) {
+            slice = os.mmap(
+                hint,
+                alloc_len,
+                os.PROT.READ | os.PROT.WRITE,
+                os.MAP.PRIVATE | os.MAP.ANONYMOUS | os.MAP.NORESERVE | os.MAP.HUGETLB | os.linux.MFD.HUGE_2MB,
+                -1,
+                0) catch return error.OutOfMemory;
+        } else {
+            slice = os.mmap(
+                hint,
+                alloc_len,
+                os.PROT.READ | os.PROT.WRITE,
                 os.MAP.PRIVATE | os.MAP.ANONYMOUS,
-            -1,
-            0,
-        ) catch return error.OutOfMemory;
+                -1,
+                0) catch return error.OutOfMemory;
+        }
         assert(mem.isAligned(@ptrToInt(slice.ptr), page_size));
 
         const result_ptr = mem.alignPointer(slice.ptr, alignment) orelse
