@@ -452,8 +452,9 @@ const PageAllocator = struct {
         if (builtin.os.tag == .windows) {
             os.windows.VirtualFree(buf_unaligned.ptr, 0, os.windows.MEM_RELEASE);
         } else {
-            const buf_aligned_len = mem.alignForward(buf_unaligned.len, mem.page_size);
-            const ptr = @alignCast(mem.page_size, buf_unaligned.ptr);
+            const page_size: u29 = comptime if (@hasDecl(root, "ENABLE_HUGE_PAGES")) 2 * 1024 * 1024 else mem.page_size;
+            const buf_aligned_len = mem.alignForward(buf_unaligned.len, page_size);
+            const ptr = @alignCast(page_size, buf_unaligned.ptr);
             os.munmap(ptr[0..buf_aligned_len]);
         }
     }
