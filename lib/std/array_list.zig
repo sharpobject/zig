@@ -510,6 +510,18 @@ pub fn ArrayListAlignedUnmanaged(comptime T: type, comptime alignment: ?u29) typ
             return result;
         }
 
+        /// Convert a slice to an ArrayList temporarily.
+        pub fn fromOwnedSliceEmpty(s: Slice) Self {
+            return .{
+                .items = s[0..0],
+                .capacity = s.len,
+            };
+        }
+
+        pub fn getUnusedCapacity(self: Self) usize {
+            return self.capacity - self.items.len;
+        }
+
         /// The caller owns the returned memory. ArrayList becomes empty.
         pub fn toOwnedSliceSentinel(self: *Self, allocator: Allocator, comptime sentinel: T) Allocator.Error![:sentinel]T {
             try self.append(allocator, sentinel);
