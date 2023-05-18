@@ -6,6 +6,7 @@ const net = std.net;
 const os = std.os;
 const linux = os.linux;
 const testing = std.testing;
+const cpu_set_t = linux.cpu_set_t;
 
 pub const IO_Uring = struct {
     fd: os.fd_t = -1,
@@ -1036,6 +1037,30 @@ pub const IO_Uring = struct {
             .NXIO => return error.BuffersNotRegistered,
             else => |errno| return os.unexpectedErrno(errno),
         }
+    }
+
+    /// Registers an array of buffers for use with `read_fixed` and `write_fixed`.
+    pub fn set_worker_thread_affinity(self: *IO_Uring, cpu_set: cpu_set_t) !void {
+        assert(self.fd >= 0);
+        const res = linux.io_uring_register(
+            self.fd,
+            .IORING_REGISTER_IOWQ_AFF,
+            &cpu_set,
+            @sizeOf(cpu_set_t),
+        );
+        try handle_registration_result(res);
+    }
+
+    /// Unregister the registered buffers.
+    pub fn unset_worker_thread_affinity(self: *IO_Uring) !void {
+        assert(self.fd >= 0);
+        const res = linux.io_uring_register(
+            self.fd,
+            .IORING_UNREGISTER_IOWQ_AFF,
+            null,
+            0,
+        );
+        try handle_registration_result(res);
     }
 
     fn handle_registration_result(res: usize) !void {
