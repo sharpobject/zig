@@ -20,8 +20,8 @@ pub fn Hmac(comptime Hash: type) type {
         pub const key_length_min = 0;
         pub const key_length = 32; // recommended key length
 
-        o_key_pad: [Hash.block_length]u8,
         hash: Hash,
+        o_hash: Hash,
 
         // HMAC(k, m) = H(o_key_pad || H(i_key_pad || msg)) where || is concatenation
         pub fn create(out: *[mac_length]u8, msg: []const u8, key: []const u8) void {
@@ -34,6 +34,7 @@ pub fn Hmac(comptime Hash: type) type {
             var ctx: Self = undefined;
             var scratch: [Hash.block_length]u8 = undefined;
             var i_key_pad: [Hash.block_length]u8 = undefined;
+            var o_key_pad: [Hash.block_length]u8 = undefined;
 
             // Normalize key length to block size of hash
             if (key.len > Hash.block_length) {
@@ -46,7 +47,7 @@ pub fn Hmac(comptime Hash: type) type {
                 mem.copy(u8, scratch[0..], key);
             }
 
-            for (ctx.o_key_pad) |*b, i| {
+            for (o_key_pad) |*b, i| {
                 b.* = scratch[i] ^ 0x5c;
             }
 
@@ -56,6 +57,8 @@ pub fn Hmac(comptime Hash: type) type {
 
             ctx.hash = Hash.init(.{});
             ctx.hash.update(&i_key_pad);
+            ctx.o_hash = Hash.init(.{});
+            ctx.o_hash.update(&o_key_pad);
             return ctx;
         }
 
@@ -66,10 +69,8 @@ pub fn Hmac(comptime Hash: type) type {
         pub fn final(ctx: *Self, out: *[mac_length]u8) void {
             var scratch: [mac_length]u8 = undefined;
             ctx.hash.final(&scratch);
-            var ohash = Hash.init(.{});
-            ohash.update(&ctx.o_key_pad);
-            ohash.update(&scratch);
-            ohash.final(out);
+            ctx.o_hash.update(&scratch);
+            ctx.o_hash.final(out);
         }
     };
 }
